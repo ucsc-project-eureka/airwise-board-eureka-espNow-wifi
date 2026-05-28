@@ -2,7 +2,7 @@
 #include <esp_now.h>
 #include <esp_wifi.h>
 
-#define MAX_SENSOR_NODES 3
+#define MAX_SENSOR_NODES 1
 #define TDMA_SLOT_TIME 200
 #define JOIN_REQUEST_TIMEOUT 1000
 #define SENSOR_RESPONSE_TIMEOUT (TDMA_SLOT_TIME * MAX_SENSOR_NODES)
