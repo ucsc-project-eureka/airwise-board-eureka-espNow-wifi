@@ -1,8 +1,13 @@
+/*
+NOTE: This should be compiled with the Heltec Wireless Shell (V3) in order to get responses from the esp32.
+*/
+
+
 #include <WiFi.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
 
-#define MAX_SENSOR_NODES 1
+#define MAX_SENSOR_NODES 3
 #define TDMA_SLOT_TIME 200
 #define JOIN_REQUEST_TIMEOUT 1000
 #define SENSOR_RESPONSE_TIMEOUT (TDMA_SLOT_TIME * MAX_SENSOR_NODES)
@@ -196,10 +201,13 @@ void loop(){
   // every five seconds, send a "give me data" ping.
   if((currentTime-sendTime)>=5000){
     discoveryPacket_t giveMeData = {
-      .type = DISCOVERY};
+      .type = DISCOVERY,
+      .hopCount = 1};
       sendTime = currentTime;
       esp_now_send(broadcastAddress,(uint8_t*)&giveMeData,sizeof(discoveryPacket_t));
       Serial.println("Sent GIVE DATA!");
+      discoverySentTime = millis();       // <-- add this
+      waitingForJoinRequests = true;      // <-- add this
   }
   if (waitingForJoinRequests && millis() - discoverySentTime > JOIN_REQUEST_TIMEOUT) {
     Serial.println("Finished waiting for JOIN_REQUESTs.");

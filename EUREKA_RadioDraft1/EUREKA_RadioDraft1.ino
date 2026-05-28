@@ -1,3 +1,9 @@
+
+/*
+NOTE: 
+Heltec Wireless Shell (V3) board on the aurduino platform
+*/
+
 #include <esp_now.h>
 #include <WiFi.h>
 
