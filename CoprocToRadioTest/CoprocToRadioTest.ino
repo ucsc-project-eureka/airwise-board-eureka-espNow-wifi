@@ -1,71 +1,71 @@
-// Run on Arduino Zero Native USB port board.
-#include <Wire.h>
-#include <SPI.h>
-#include "wiring_private.h" // Necessary for pin peripheral multiplexing (from Sankie)
 
-#define WAIT_TIME 5000
-#define SECOND_TIME 1000
+/*
+ * - Mode: TEXTMSG
+ * - Baud rate: 38400
+ * - RX GPIO: 44
+ * - TX GPIO: 43
+ */
 
-// Other setup pinouts ------------------------------------------------------------
-// Use DEBUG_PORT for the Native Port
 #define DEBUG_PORT SerialUSB
+#define ESP_PORT  Serial1
 
-// From Airwise's ESP32 UART connections.
-#define ESP_PIN_TX 8
-#define ESP_PIN_RX 9
+constexpr uint32_t DEBUG_BAUD = 115200;
+constexpr uint32_t ESP_BAUD = 9600;
+constexpr uint32_t SEND_PERIOD_MS = 5000;
 
-// Pins/custom serial port for the ESP32 - Credit, Airwise team
-// Create a new Serial instance for SERCOM0 ----------------------------------------
-Uart ESP32Serial(&sercom0, ESP_PIN_RX, ESP_PIN_TX, SERCOM_RX_PAD_3, UART_TX_PAD_2);
+constexpr size_t MESSAGE_BUFFER_SIZE = 96;
 
-// Helpers -------------------------------------------------------------------------
-
-// MAIN ----------------------------------------------------------------------------
-int currentTime = 0;
-int lastTime = 0;
+uint32_t packetCounter = 0;
+uint32_t lastSendMs = 0;
 
 void setup() {
-  // turn on the radio from the coproc
   PORT->Group[0].DIRSET.reg = PORT_PA17;
   PORT->Group[0].OUTCLR.reg = PORT_PA17;
 
-  DEBUG_PORT.begin(115200);
+  DEBUG_PORT.begin(DEBUG_BAUD);
+  uint32_t start = millis();
+  while (!DEBUG_PORT && (millis() - start < 3000));
 
-  while (!DEBUG_PORT);
-  DEBUG_PORT.println("Debug Serial initialized!");
+  DEBUG_PORT.println();
+  DEBUG_PORT.print("Debug serial on, baud rate: ");
+  DEBUG_PORT.println(DEBUG_BAUD);
 
-  // Get UART connecting coproc and esp32 online.
-  ESP32Serial.begin(9600); // UART, esp32->coproc and vice versa.
+  ESP_PORT.begin(ESP_BAUD);
+  DEBUG_PORT.println();
+  DEBUG_PORT.print("ESP UART on, baud rate: ");
+  DEBUG_PORT.println(ESP_BAUD);
 
-  // Assign the pins to the SERCOM peripheral (Peripheral C)
-  pinPeripheral(ESP_PIN_RX, PIO_SERCOM);
-  pinPeripheral(ESP_PIN_TX, PIO_SERCOM);
-  Serial.println("Coproc listening on PA16(TX) and PA15(RX)...");
+  // just in case
+  delay(5000);
+
+  DEBUG_PORT.println();
+  DEBUG_PORT.print("Sending test message every ");
+  DEBUG_PORT.print(SEND_PERIOD_MS);
+  DEBUG_PORT.println(" ms.");
 }
 
 void loop() {
-  currentTime = millis();
-  // Send message every five seconds.
-  // fire every interval of WAIT_TIME
+  uint32_t now = millis();
 
-  // if(currentTime - lastTime>=WAIT_TIME){
-  //   ESP32Serial.println("Hello ESP32 from Coproc!\n");
-  //   DEBUG_PORT.println("Hello ESP32 sent!\n");
-  //   lastTime = currentTime; // reset time markers.
-  // }
-  // // Otherwise, add the loading dots every second.
-  // else if((currentTime-startTime)%SECOND_TIME == 0){
-  //   DEBUG_PORT.println(".");
-  // }
+  if (now - lastSendMs >= SEND_PERIOD_MS) {
+    lastSendMs = now;
+    packetCounter++;
 
-  // Read whatever's sent back.
-  if(ESP32Serial.available()){
-    String input = ESP32Serial.readStringUntil('\n');
-    input.trim();
-    DEBUG_PORT.println("Recieved message on ESP32Serial:");
-    DEBUG_PORT.println(input);
+    char message[MESSAGE_BUFFER_SIZE];
+
+    // formats message 
+    // snprintf(destination, maxSize, formatString, values)
+    snprintf(
+      message,
+      sizeof(message),
+      "COPROC_TEST packet=%lu uptime_ms=%lu",
+      (unsigned long)packetCounter,
+      (unsigned long)now
+    );
+
+    ESP_PORT.println(message);
+
+    DEBUG_PORT.print("Sent to Meshtastic (Serial1): ");
+    DEBUG_PORT.println(message);
   }
-
-  // Ensure PA17 remains LOW
-  PORT->Group[0].OUTCLR.reg = PORT_PA17;
 }
