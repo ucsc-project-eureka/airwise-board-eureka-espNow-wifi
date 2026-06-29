@@ -46,6 +46,9 @@ int messageCount = 0;
     .timestamp = 0
   };
 
+void onDataSent(const wifi_tx_info_t *info, esp_now_send_status_t status) {
+  Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Send OK" : "Send FAILED");
+}
 
 void setup(){
   DEBUG_PORT.begin(9600);
@@ -59,6 +62,13 @@ void setup(){
     DEBUG_PORT.println("ESP-NOW init failed!");
     return;
   }
+
+  esp_now_register_send_cb(onDataSent);
+
+  esp_now_peer_info_t peerInfo = {};
+  memcpy(peerInfo.peer_addr, broadcastAddress, 6);
+  peerInfo.channel = 1;
+  esp_now_add_peer(&peerInfo);
 
   DEBUG_PORT.println("ESP32 radio DEBUG_PORT ready");
 }
