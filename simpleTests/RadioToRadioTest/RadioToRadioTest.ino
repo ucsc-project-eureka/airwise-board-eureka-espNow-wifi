@@ -1,5 +1,6 @@
 // Only runs on ESP32S3 Dev Module board for debug port access.
 // onboard ESP32 sends message via wifi to another onboard esp32 every five seconds.
+// You must enable CDC on boot in sketch settings.
 
 #include <WiFi.h>
 #include <esp_now.h>
@@ -7,6 +8,8 @@
 
 #define WAIT_TIME 5000
 #define SECOND_TIME 1000
+#define DEBUG_PORT Serial
+#define BUFFER_SIZE 1000
 
 
 uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
@@ -45,18 +48,18 @@ int messageCount = 0;
 
 
 void setup(){
-  Serial.begin(9600);
-  while(!Serial){;}
-  Serial.println("Serial connected!");
+  DEBUG_PORT.begin(9600);
+  while(!DEBUG_PORT){;}
+  DEBUG_PORT.println("DEBUG_PORT connected!");
   WiFi.disconnect(true);
   WiFi.mode(WIFI_STA);
 
   if(esp_now_init() != ESP_OK){
-    Serial.println("ESP-NOW init failed!");
+    DEBUG_PORT.println("ESP-NOW init failed!");
     return;
   }
 
-  Serial.println("ESP32 radio serial ready");
+  DEBUG_PORT.println("ESP32 radio DEBUG_PORT ready");
 }
 
 void loop() {
@@ -68,9 +71,15 @@ void loop() {
   // execute sending task. broadcast for ease of reception.
   // send ptr to message.
   esp_now_send(broadcastAddress, (uint8_t*)&myData, sizeof(myData));
-
-
   
+  DEBUG_PORT.println("Sent message:");
+  char buffer[BUFFER_SIZE];
+  snprintf(buffer, BUFFER_SIZE, "\
+  Temperature: %f\
+  Humidity: %f\
+  Soil Moisture: %u\
+  Time sent: %lu", myData.temperature, myData.humidity, myData.soilMoisture, myData.timestamp);
+  DEBUG_PORT.println(buffer);
 
   // once they are equal, set to equal. then restart loop iteration.
   lastTime = currentTime;
