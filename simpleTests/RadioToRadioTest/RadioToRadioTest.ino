@@ -56,7 +56,6 @@ void setup(){
   DEBUG_PORT.println("DEBUG_PORT connected!");
   WiFi.disconnect(true);
   WiFi.mode(WIFI_STA);
-  esp_now_add_peer(broadcastAddress);
 
   if(esp_now_init() != ESP_OK){
     DEBUG_PORT.println("ESP-NOW init failed!");
@@ -65,6 +64,7 @@ void setup(){
 
   esp_now_register_send_cb(onDataSent);
 
+  // adding peer so that broadcast is sent
   esp_now_peer_info_t peerInfo = {};
   memcpy(peerInfo.peer_addr, broadcastAddress, 6);
   peerInfo.channel = 1;
