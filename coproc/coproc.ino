@@ -1,6 +1,7 @@
 #include <Wire.h>
 #include <SPI.h>
 #include <Adafruit_Sensor.h>
+#include <HardwareSerial.h>
 
 // MODS
 #include <Adafruit_seesaw.h>
@@ -291,14 +292,12 @@ void setup(){
   while (!DEBUG_PORT);
   DEBUG_PORT.println("Debug Serial initialized!");
 
-  ESP_PORT.begin(ESP_BAUD, SERIAL_8N1, ESP_PIN_RX, ESP_PIN_TX);
-
   // Get UART connecting coproc and esp32 online.
-  ESP_PORT.begin(9600); // UART, esp32->coproc and vice versa.
+  ESP_PORT.begin(ESP_BAUD); // UART, coproc->esp32 and vice versa.
   // Assign the pins to the SERCOM peripheral (Peripheral C)
-  pinPeripheral(ESP_PIN_RX, PIO_SERCOM);
-  pinPeripheral(ESP_PIN_TX, PIO_SERCOM);
-  Serial.println("SAMD21 listening on PA16(TX) and PA15(RX)...");
+  // pinPeripheral(ESP_PIN_RX, PIO_SERCOM);
+  // pinPeripheral(ESP_PIN_TX, PIO_SERCOM);
+  // Serial.println("SAMD21 listening on PA16(TX) and PA15(RX)...");
 
   // Check functionality of SD card, format it as FAT32:
   // checkAndFormatSD();
