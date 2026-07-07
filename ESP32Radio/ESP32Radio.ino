@@ -24,6 +24,11 @@ unsigned long scheduledSlotTime = 0;
 bool hasJoined = false;
 bool clusterheadMACKnown = false;
 bool scheduleReceived = false;
+bool sentPacket = false;
+
+uint8_t broadcastAddress[] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
+uint8_t sinkMAC[6];
+bool sinkMACKnown = false;
 
 uint8_t clusterheadMAC[6];
 uint8_t mySlotIndex = 255;
@@ -68,10 +73,12 @@ void sendJoinRequest() {
   if (hasJoined) return;
   joinRequestPacket_t joinPacket = { JOIN_REQUEST };
   esp_now_send(clusterheadMAC, (uint8_t *)&joinPacket, sizeof(joinPacket));
+  DEBUG_PORT.println("Sent join request!");
 }
 
 // in case of received discovery packet.
-void handleDiscoveryPacket(const uint8_t *senderMAC, const discoveryPacket_t *packet) {
+void handleDiscoveryPacket(const uint8_t *senderMAC, const discoveryPacket_t *packet){
+  DEBUG_PORT.println("Discovery packet received!");
   if (packet->hopCount == 0) return;
   if (!clusterheadMACKnown) {
     memcpy(clusterheadMAC, senderMAC, 6);
@@ -79,10 +86,12 @@ void handleDiscoveryPacket(const uint8_t *senderMAC, const discoveryPacket_t *pa
 
     // Register clusterhead as peer now that we have its MAC
     memcpy(peerInfo.peer_addr, clusterheadMAC, 6);
-    peerInfo.channel = 2;
+    peerInfo.channel = 0;
     peerInfo.encrypt = false;
     esp_now_add_peer(&peerInfo);
+    DEBUG_PORT.println("Added clusterhead as a peer!");
   }
+  else{DEBUG_PORT.println("Clusterhead was already added.");}
   if (!hasJoined) {
     sendJoinRequest();
   }
@@ -91,6 +100,7 @@ void handleDiscoveryPacket(const uint8_t *senderMAC, const discoveryPacket_t *pa
 // in case of received schedule packet.
 void handleSchedulePacket(const uint8_t *senderMAC, const tdmaSchedulePacket_t *packet) {
   scheduleReceived = true;
+  DEBUG_PORT.println("Received schedule packet!");
   uint8_t myMAC[6];
   WiFi.macAddress(myMAC);
   for (int i = 0; i < MAX_SENSOR_NODES; i++) {
@@ -103,23 +113,6 @@ void handleSchedulePacket(const uint8_t *senderMAC, const tdmaSchedulePacket_t *
   }
   hasJoined = false;
   mySlotIndex = 255;
-}
-
-// Reads data from Serial UART prints and parses into packet.
-bool getDataFromCoproc(sensorDataPacket_t* dataPacket) {
-  if (COPROC_PORT.available()) {
-    String header = COPROC_PORT.readStringUntil('\n');
-    header.trim();
-    if (header == "SENSOR_DATA:") {
-      dataPacket->type         = SENSOR_DATA;
-      dataPacket->temperature  = DEBUG_PORT.readStringUntil('\n').toFloat();
-      dataPacket->humidity     = DEBUG_PORT.readStringUntil('\n').toFloat();
-      dataPacket->soilMoisture = DEBUG_PORT.readStringUntil('\n').toInt();
-      dataPacket->timestamp    = DEBUG_PORT.readStringUntil('\n').toInt();
-      return true;
-    }
-  }
-  return false;
 }
 
 // ESP32 correct callback
@@ -144,7 +137,8 @@ void OnDataRecv(const esp_now_recv_info *recv_info, const uint8_t *incomingData,
 
 void setup(){
   DEBUG_PORT.begin(115200);
-  COPROC_PORT.begin(ESP_BAUD, SERIAL_8N1, ESP_PIN_TX, ESP_PIN_RX);
+  while(!DEBUG_PORT);
+  COPROC_PORT.begin(ESP_BAUD, SERIAL_8N1, ESP_PIN_RX, ESP_PIN_TX);
 
   WiFi.disconnect(true);
   delay(1000);
@@ -153,20 +147,76 @@ void setup(){
   if (esp_now_init() != ESP_OK) {
     return;
   }
+
+  // setup the broadcast channel.
+  // adding peer so that broadcast is sent
+  esp_now_peer_info_t peerInfo = {};
+  memcpy(peerInfo.peer_addr, broadcastAddress, 6);
+  peerInfo.channel = 0;
+  esp_now_add_peer(&peerInfo);
+  DEBUG_PORT.println("Broadcasting address added as wifi esp-now peer");
+
   esp_now_register_recv_cb(OnDataRecv);
 }
 
 void loop() {
+  sentPacket = false;
   if (scheduleReceived && hasJoined && millis() >= scheduledSlotTime){
     // Trigger the coproc to send sensor data to ESP32.
-    DEBUG_PORT.println("SENSOR_DATA");
-    // Wait for coproc to respond.
+    COPROC_PORT.println("SENSOR_DATA");
+    // Wait a period to recieve data back. Wait for coproc to respond.
+    while(!(COPROC_PORT.available()));
     sensorDataPacket_t dataPacket;
-    unsigned long timeout = millis() + 2000;
-    while (!getDataFromCoproc(&dataPacket) && millis() < timeout);
-    // Only send if we actually got data
-    if (millis() < timeout) {
-      esp_now_send(clusterheadMAC, (uint8_t *)&dataPacket, sizeof(dataPacket));
+    if (COPROC_PORT.available() && !sentPacket) {
+      String header = COPROC_PORT.readStringUntil('\n');
+      header.trim();
+      if (header == "SENSOR_DATA:") {
+        // Get data from printline serial from coproc.
+        dataPacket.type         = SENSOR_DATA;
+        dataPacket.temperature  = COPROC_PORT.readStringUntil('\n').toFloat();
+        dataPacket.humidity     = COPROC_PORT.readStringUntil('\n').toFloat();
+        dataPacket.soilMoisture = COPROC_PORT.readStringUntil('\n').toInt();
+        dataPacket.timestamp    = COPROC_PORT.readStringUntil('\n').toInt();
+            
+        DEBUG_PORT.println("Received data from coproc!");
+        DEBUG_PORT.println("");
+        // Print check what you recieved from coproc.
+        // char buff[3000];
+        // snprintf(buff, sizeof(buff),
+        // "COPROC Temperature: %f\n"
+        // "COPROC humidity: %f\n"
+        // "COPROC soilMoisture: %u\n"
+        // "COPROC timestamp: %lu\n\n", 
+        // dataPacket.temperature, 
+        // dataPacket.humidity, 
+        // dataPacket.soilMoisture,
+        // dataPacket.timestamp);
+            
+        // DEBUG_PORT.print(buff); 
+        }
+        else{DEBUG_PORT.println("get Data called, SENSOR_DATA was not found");}
+        }
+      int timeout = millis() + 2000;
+      // Only send if we actually got data
+      if (millis() < timeout) {
+        // print check what you're sending!
+        DEBUG_PORT.println("Sending this data packet:");
+        char buff[3000];
+        snprintf(buff, sizeof(buff),
+        "COPROC Temperature: %f\n"
+        "COPROC humidity: %f\n"
+        "COPROC soilMoisture: %u\n"
+        "COPROC timestamp: %lu\n\n", 
+        dataPacket.temperature, 
+        dataPacket.humidity, 
+        dataPacket.soilMoisture,
+        dataPacket.timestamp);
+        DEBUG_PORT.print(buff);
+
+        // send and confirm.
+        esp_now_send(clusterheadMAC, (uint8_t *)&dataPacket, sizeof(dataPacket));
+        DEBUG_PORT.println("Sent Data packet!");
+        sentPacket = true;
     }
     scheduleReceived = false;
   }

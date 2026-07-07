@@ -8,7 +8,7 @@ NOTE: This should be compiled with the Heltec Wireless Shell (V3) in order to ge
 
 #define MAX_SENSOR_NODES 3
 #define TDMA_SLOT_TIME 1000
-#define JOIN_REQUEST_TIMEOUT 1000
+#define JOIN_REQUEST_TIMEOUT 3000
 #define SENSOR_RESPONSE_TIMEOUT (TDMA_SLOT_TIME * MAX_SENSOR_NODES)
 
 uint8_t broadcastAddress[] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
@@ -73,8 +73,15 @@ uint8_t sensorNodeCount = 0;
 
 sensorDataPacket_t sensorData[MAX_SENSOR_NODES];
 bool sensorDataReceived[MAX_SENSOR_NODES] = { false };
+unsigned long joinCount = 0;
+
+int startTime;
+int currentTime;
+int sendTime;
 
 void handleJoinRequest(const uint8_t *senderMAC) {
+  // Mark as joined.
+  joinCount ++;
 
   // Check if MAC is already recorded
   for (uint8_t i = 0; i < sensorNodeCount; ++i) {
@@ -142,6 +149,18 @@ void sendTDMASchedule() {
   }
 }
 
+// send a "give me data" ping. Assuming peer channel is the broadcast channel.
+void sendDiscoveryPacket(){
+  discoveryPacket_t giveMeData = {
+      .type = DISCOVERY,
+      .hopCount = 1};
+      sendTime = currentTime;
+      esp_now_send(broadcastAddress,(uint8_t*)&giveMeData,sizeof(discoveryPacket_t));
+      Serial.println("Sent GIVE DATA!");
+      discoverySentTime = millis();
+      waitingForJoinRequests = true;     
+}
+
 void readMacAddress(){
   uint8_t baseMac[6];
   esp_err_t ret = esp_wifi_get_mac(WIFI_IF_STA, baseMac);
@@ -175,9 +194,8 @@ void OnDataRecv(const esp_now_recv_info *recvInfo, const uint8_t *incomingData, 
   }
 }
 
-int startTime;
-int currentTime;
-int sendTime;
+// MAIN ---------------------------------------------------------------------------------
+
 void setup(){
   Serial.begin(115200);
 
@@ -191,29 +209,37 @@ void setup(){
 
   Serial.println("[DEFAULT] ESP32 Board MAC Address: ");
   readMacAddress();
+
+  // adding peer so that broadcast is sent
+  esp_now_peer_info_t peerInfo = {};
+  memcpy(peerInfo.peer_addr, broadcastAddress, 6);
+  peerInfo.channel = 0;
+  esp_now_add_peer(&peerInfo);
+  Serial.println("Broadcasting address added as wifi esp-now peer");
+
   Serial.println("\nClusterhead stand-in ready.");
   startTime = millis();
 }
  
 void loop(){
   currentTime = millis();
-  // every five seconds, send a "give me data" ping.
+  // every five seconds, send a "give me data" ping on the braodcast channel.
   if((currentTime-sendTime)>=5000){
-    discoveryPacket_t giveMeData = {
-      .type = DISCOVERY,
-      .hopCount = 1};
-      sendTime = currentTime;
-      esp_now_send(broadcastAddress,(uint8_t*)&giveMeData,sizeof(discoveryPacket_t));
-      Serial.println("Sent GIVE DATA!");
-      discoverySentTime = millis();
-      waitingForJoinRequests = true;     
+    sendDiscoveryPacket();
   }
-  if (waitingForJoinRequests && millis() - discoverySentTime > JOIN_REQUEST_TIMEOUT) {
+  if (waitingForJoinRequests && (millis() - discoverySentTime > JOIN_REQUEST_TIMEOUT)) {
     Serial.println("Finished waiting for JOIN_REQUESTs.");
     waitingForJoinRequests = false;
 
-    // Send TDMA schedule
-    sendTDMASchedule();
+    // Send TDMA schedule only if it had sensors join it.
+    if (joinCount >= 1){
+      sendTDMASchedule();
+    }
+    else{
+      Serial.println("Didn't receive any join requests, stalling for 3 seconds.");
+      delay(3000);
+    }
+
   }
   if (waitingForSensorData && millis() - scheduleSentTime > SENSOR_RESPONSE_TIMEOUT) {
     Serial.println("Finished waiting for JOIN_REQUESTs.");

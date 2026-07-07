@@ -147,7 +147,7 @@ void checkBme680(void){
   // Check initialization of every sensor.
   if (!bme.begin()) {
     DEBUG_PORT.println("Could not find a valid BME680 sensor, check wiring!");
-    while (1);
+    return;
   }
   else{
     // Set up oversampling and filter initialization for BME
@@ -294,6 +294,7 @@ void setup(){
 
   // Get UART connecting coproc and esp32 online.
   ESP_PORT.begin(ESP_BAUD); // UART, coproc->esp32 and vice versa.
+  while(!ESP_PORT);
   // Assign the pins to the SERCOM peripheral (Peripheral C)
   // pinPeripheral(ESP_PIN_RX, PIO_SERCOM);
   // pinPeripheral(ESP_PIN_TX, PIO_SERCOM);
