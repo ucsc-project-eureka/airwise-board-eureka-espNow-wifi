@@ -93,8 +93,8 @@ bool clusterHeadMACKnown(uint8_t* MAC){
   uint8_t testMAC;
   memcpy(&testMAC, MAC, 6);
   bool flag = false;
-  for (int i = 0; i<clusterHeadCount, i++){
-    if (memcmp(&testMAC, &(clusterHeadMACs[i])) == 0){
+  for (int i = 0; i<clusterHeadCount; i++){
+    if (memcmp(&testMAC, &(clusterHeadMACs[i]),sizeof(clusterHeadMACs[i])) == 0){
       flag = true;
     }
   }
@@ -102,20 +102,20 @@ bool clusterHeadMACKnown(uint8_t* MAC){
 }
 
 // Unfinished - need to complete the second portion of reading out all the collected data.
-void handleAggregatePacket(uint8_t* CHMAC, aggregateDataPacket_t* aggPkt){
+void handleAggregatePacket((uint8_t*) CHMAC, aggregateDataPacket_t* aggPkt){
   uint8_t packetMAC;
   memcpy(&packetMAC,&CHMAC,6);
   if (!clusterHeadMACKnown(&packetMAC)){
-    memcpy(&(clusterHeadMAC[clusterHeadCount++]), CHMAC, 6);
+    memcpy(&(clusterHeadMACs[clusterHeadCount++]), CHMAC, 6);
   }
   // print out the data recieved, copy the packet.
   DEBUG_PORT.println("Recieved Aggregate data packet from clusterhead!");
   // memcpy the agg packet into a larger array of all the collected data.
-  memcpy(aggregatePackets[clusterHeadCount], aggPkt, sizeof(aggregateDataPacket_t));
+  memcpy(&aggregatePackets[clusterHeadCount], aggPkt, sizeof(aggregateDataPacket_t));
 
   for (int i = 0; i<clusterHeadCount; i++){
     char buff[1000];
-    sprintf(buff, "Data collected for Clusterhead %i:"));
+    sprintf(buff, "Data collected for Clusterhead %i:");
     DEBUG_PORT.println(buff);
 
     for (int j = 0; j<aggregatePackets[i].readingsCount;j++){
@@ -138,7 +138,7 @@ void onDataRecv(const esp_now_recv_info* recvInfo, const uint8_t* incomingData){
   uint8_t packetType = incomingData[0];
 
   if (packetType == AGGREGATE_DATA){
-    handleAggregatePacket((const uint8_t*)senderMac, (const aggregateDataPacket_t*) &incomingData);
+    handleAggregatePacket(&senderMac, (const aggregateDataPacket_t*) &incomingData);
   }
   return;
 }
