@@ -118,6 +118,7 @@ void handleDiscoveryPacket(const uint8_t* senderMAC, const discoveryPacket_t* pa
     memcpy(&sinkPkt, packet, sizeof(discoveryPacket_t));
     sendDiscoveryPacket(&sinkPkt);
     sentDiscovery = true;
+    DEBUG_PORT.println("Sent discovery packet!");
   }
   return;
 }
@@ -235,6 +236,7 @@ void OnDataRecv(const esp_now_recv_info* recvInfo, const uint8_t* incomingData, 
 
   switch (packetType) {
     case DISCOVERY:
+      DEBUG_PORT.println("Recieved discovery packet!");
       handleDiscoveryPacket(senderMac, (const discoveryPacket_t*)incomingData);
       break;
     
