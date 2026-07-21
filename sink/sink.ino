@@ -8,6 +8,7 @@ NOTE: This should be compiled with the ESP32S3 Dev Module with CDC on Boot enabl
 #include <esp_wifi.h>
 
 #define DATA_GET_INTERVAL 10000 // sending the "give me data" ping every 10 seconds.
+#define MAX_SENSOR_NODES 3
 #define DEBUG_PORT Serial
 #define MAX_CLUSTERHEADS 1
 
@@ -15,7 +16,6 @@ NOTE: This should be compiled with the ESP32S3 Dev Module with CDC on Boot enabl
 // DEFS ---------------------------------------------------------------
 uint8_t broadcastAddress[] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
 uint8_t clusterHeadMACs[MAX_CLUSTERHEADS][6];
-aggregateDataPacket_t aggregatePackets[MAX_CLUSTERHEADS];
 unsigned long clusterHeadCount = 0;
 
 // Default C++ enum values are type int
@@ -63,6 +63,7 @@ struct aggregateDataPacket_t {
 
 // Global variables
 
+aggregateDataPacket_t aggregatePackets[MAX_CLUSTERHEADS];
 bool sentDiscovery = false;
 
 aggregateDataPacket_t aggData;
@@ -90,10 +91,10 @@ void sendDiscoveryPacket(){
 
 bool clusterHeadMACKnown(uint8_t* MAC){
   uint8_t testMAC;
-  memcpy(testMAC, MAC, 6);
+  memcpy(&testMAC, MAC, 6);
   bool flag = false;
   for (int i = 0; i<clusterHeadCount, i++){
-    if (memcmp(testMAC, clusterHeadMACs[i]) == 0){
+    if (memcmp(&testMAC, &(clusterHeadMACs[i])) == 0){
       flag = true;
     }
   }
@@ -103,36 +104,32 @@ bool clusterHeadMACKnown(uint8_t* MAC){
 // Unfinished - need to complete the second portion of reading out all the collected data.
 void handleAggregatePacket(uint8_t* CHMAC, aggregateDataPacket_t* aggPkt){
   uint8_t packetMAC;
-  memcpy(packetMAC,CHMAC,6)
+  memcpy(&packetMAC,&CHMAC,6);
   if (!clusterHeadMACKnown(&packetMAC)){
-    memcpy(clusterHeadMAC, CHMAC, 6);
-    clusterHeadCount ++;
+    memcpy(&(clusterHeadMAC[clusterHeadCount++]), CHMAC, 6);
   }
-  // copy the data packet. 
-  aggregatePacket_t CHsData;
-  CHsData.type = AGGREGATE_DATA;
-  memcpy(CHsData, aggPkt,sizeof(aggregateDataPacket_t));
-  // print out the data recieved.
+  // print out the data recieved, copy the packet.
   DEBUG_PORT.println("Recieved Aggregate data packet from clusterhead!");
-  for (int i = 0; i<clusterHeadCount, i++){
+  // memcpy the agg packet into a larger array of all the collected data.
+  memcpy(aggregatePackets[clusterHeadCount], aggPkt, sizeof(aggregateDataPacket_t));
+
+  for (int i = 0; i<clusterHeadCount; i++){
     char buff[1000];
     sprintf(buff, "Data collected for Clusterhead %i:"));
     DEBUG_PORT.println(buff);
 
-    for (int j = 0; j<CHsData.readingsCount;j++){
+    for (int j = 0; j<aggregatePackets[i].readingsCount;j++){
       DEBUG_PORT.println(j);
       DEBUG_PORT.println("Temperature: ");
-      DEBUG_PORT.println(CHsData[i].temperatures[j]);
+      DEBUG_PORT.println(aggregatePackets[i].temperatures[j]);
       DEBUG_PORT.println("Humidity: ");
-      DEBUG_PORT.println(CHsData[i].humidities[j]);
+      DEBUG_PORT.println(aggregatePackets[i].humidities[j]);
       DEBUG_PORT.println("Soil Moisture: ");
-      DEBUG_PORT.println(CHsData[i].soilMoistures[j]);
+      DEBUG_PORT.println(aggregatePackets[i].soilMoistures[j]);
       DEBUG_PORT.println("Time Stamp: ");
-      DEBUG_PORT.println(CHsData[i].timestamps[j]);
+      DEBUG_PORT.println(aggregatePackets[i].timestamps[j]);
     }
-
   }
-  // memcpy the agg packet into a larger array of all the collected data.
   return;
 }
 
@@ -141,7 +138,7 @@ void onDataRecv(const esp_now_recv_info* recvInfo, const uint8_t* incomingData){
   uint8_t packetType = incomingData[0];
 
   if (packetType == AGGREGATE_DATA){
-    handleAggregatePacket(&senderMAC, (const aggregateDataPacket_t*) &incomingData);
+    handleAggregatePacket((const uint8_t*)senderMac, (const aggregateDataPacket_t*) &incomingData);
   }
   return;
 }
@@ -151,8 +148,8 @@ void onDataRecv(const esp_now_recv_info* recvInfo, const uint8_t* incomingData){
 void setup() {
   DEBUG_PORT.begin(115200);
 
-  Wifi.disconnect = true;
-  Wifi.mode(WIFI_STA);
+  WiFi.disconnect(true);
+  WiFi.mode(WIFI_STA);
 
   memcpy(peerInfo.peer_addr, broadcastAddress, 6);
   peerInfo.channel = 0;
@@ -168,6 +165,7 @@ void loop() {
   if (currentTime - sendTime >= DATA_GET_INTERVAL){
     sendDiscoveryPacket();
   }
+  // Future: print out all aggData packets all at once. First, you need to define a timeout.
   // Once finished, reset all used conditions.
   clusterHeadCount = 0;
   memset(&aggregatePackets,0,sizeof(aggregatePackets));
