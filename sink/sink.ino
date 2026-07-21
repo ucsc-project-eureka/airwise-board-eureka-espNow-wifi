@@ -7,18 +7,16 @@ NOTE: This should be compiled with the ESP32S3 Dev Module with CDC on Boot enabl
 #include <esp_now.h>
 #include <esp_wifi.h>
 
-#define MAX_SENSOR_NODES 3
-#define TDMA_SLOT_TIME 1000
-#define JOIN_REQUEST_TIMEOUT 3000
-#define SENSOR_RESPONSE_TIMEOUT (TDMA_SLOT_TIME * MAX_SENSOR_NODES)
+#define DATA_GET_INTERVAL 10000 // sending the "give me data" ping every 10 seconds.
 #define DEBUG_PORT Serial
+#define MAX_CLUSTERHEADS 1
 
+
+// DEFS ---------------------------------------------------------------
 uint8_t broadcastAddress[] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
-uint8_t sinkMAC[6];
-bool sinkMACKnown = false;
-
-const unsigned long packetInterval = 3000;  // Time in milliseconds
-unsigned long lastPacketSentTime = 0;
+uint8_t clusterHeadMACs[MAX_CLUSTERHEADS][6];
+aggregateDataPacket_t aggregatePackets[MAX_CLUSTERHEADS];
+unsigned long clusterHeadCount = 0;
 
 // Default C++ enum values are type int
 enum messageType : uint8_t {
@@ -64,25 +62,116 @@ struct aggregateDataPacket_t {
 };
 
 // Global variables
-unsigned long discoverySentTime = 0;
 
 bool sentDiscovery = false;
-bool waitingForAggPacket = false;
 
 aggregateDataPacket_t aggData;
+discoveryPacket_t discPkt;
 
 unsigned long startTime;
 unsigned long currentTime;
 unsigned long sendTime;
+unsigned long roundCount;
 
 esp_now_peer_info_t peerInfo;
 
-void setup() {
-  // put your setup code here, to run once:
+// Helpers ----------------------------------------------------------
 
+void sendDiscoveryPacket(){
+  discPkt.type = DISCOVERY;
+  discPkt.hopCount = 0;
+  discPkt.roundCounter = roundCount;
+
+  esp_now_send(broadcastAddress, (uint8_t*)&discPkt, sizeof(discoveryPacket_t));
+  sendTime = millis();
+  sentDiscovery = true;
+  return;
+}
+
+bool clusterHeadMACKnown(uint8_t* MAC){
+  uint8_t testMAC;
+  memcpy(testMAC, MAC, 6);
+  bool flag = false;
+  for (int i = 0; i<clusterHeadCount, i++){
+    if (memcmp(testMAC, clusterHeadMACs[i]) == 0){
+      flag = true;
+    }
+  }
+  return flag;
+}
+
+// Unfinished - need to complete the second portion of reading out all the collected data.
+void handleAggregatePacket(uint8_t* CHMAC, aggregateDataPacket_t* aggPkt){
+  uint8_t packetMAC;
+  memcpy(packetMAC,CHMAC,6)
+  if (!clusterHeadMACKnown(&packetMAC)){
+    memcpy(clusterHeadMAC, CHMAC, 6);
+    clusterHeadCount ++;
+  }
+  // copy the data packet. 
+  aggregatePacket_t CHsData;
+  CHsData.type = AGGREGATE_DATA;
+  memcpy(CHsData, aggPkt,sizeof(aggregateDataPacket_t));
+  // print out the data recieved.
+  DEBUG_PORT.println("Recieved Aggregate data packet from clusterhead!");
+  for (int i = 0; i<clusterHeadCount, i++){
+    char buff[1000];
+    sprintf(buff, "Data collected for Clusterhead %i:"));
+    DEBUG_PORT.println(buff);
+
+    for (int j = 0; j<CHsData.readingsCount;j++){
+      DEBUG_PORT.println(j);
+      DEBUG_PORT.println("Temperature: ");
+      DEBUG_PORT.println(CHsData[i].temperatures[j]);
+      DEBUG_PORT.println("Humidity: ");
+      DEBUG_PORT.println(CHsData[i].humidities[j]);
+      DEBUG_PORT.println("Soil Moisture: ");
+      DEBUG_PORT.println(CHsData[i].soilMoistures[j]);
+      DEBUG_PORT.println("Time Stamp: ");
+      DEBUG_PORT.println(CHsData[i].timestamps[j]);
+    }
+
+  }
+  // memcpy the agg packet into a larger array of all the collected data.
+  return;
+}
+
+void onDataRecv(const esp_now_recv_info* recvInfo, const uint8_t* incomingData){
+  const uint8_t* senderMac = recvInfo->src_addr;
+  uint8_t packetType = incomingData[0];
+
+  if (packetType == AGGREGATE_DATA){
+    handleAggregatePacket(&senderMAC, (const aggregateDataPacket_t*) &incomingData);
+  }
+  return;
+}
+
+// MAIN -------------------------------------------------------------
+
+void setup() {
+  DEBUG_PORT.begin(115200);
+
+  Wifi.disconnect = true;
+  Wifi.mode(WIFI_STA);
+
+  memcpy(peerInfo.peer_addr, broadcastAddress, 6);
+  peerInfo.channel = 0;
+  peerInfo.encrypt = false;
+  esp_now_add_peer(&peerInfo);
+
+  DEBUG_PORT.println("ESP32 setup and broadcasting as sink");
+  startTime = millis();
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
-
+  currentTime = millis();
+  if (currentTime - sendTime >= DATA_GET_INTERVAL){
+    sendDiscoveryPacket();
+  }
+  // Once finished, reset all used conditions.
+  clusterHeadCount = 0;
+  memset(&aggregatePackets,0,sizeof(aggregatePackets));
+  memset(&discPkt, 0, sizeof(discPkt));
+  roundCount++;
+  sentDiscovery = false;
 }
