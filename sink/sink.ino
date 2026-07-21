@@ -152,6 +152,7 @@ void setup() {
 
   WiFi.disconnect(true);
   WiFi.mode(WIFI_STA);
+  esp_now_init();
 
   memcpy(peerInfo.peer_addr, broadcastAddress, 6);
   peerInfo.channel = 0;
