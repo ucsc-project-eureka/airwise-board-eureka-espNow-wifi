@@ -86,6 +86,7 @@ void sendDiscoveryPacket(){
   esp_now_send(broadcastAddress, (uint8_t*)&discPkt, sizeof(discoveryPacket_t));
   sendTime = millis();
   sentDiscovery = true;
+  DEBUG_PORT.println("Sent discovery packet!");
   return;
 }
 
@@ -107,6 +108,7 @@ void handleAggregatePacket(const uint8_t* CHMAC, aggregateDataPacket_t* aggPkt){
   memcpy(&packetMAC,&CHMAC,6);
   if (!clusterHeadMACKnown(&packetMAC)){
     memcpy(&(clusterHeadMACs[clusterHeadCount++]), CHMAC, 6);
+    DEBUG_PORT.println("Added clusterhead into data set");
   }
   // print out the data recieved, copy the packet.
   DEBUG_PORT.println("Recieved Aggregate data packet from clusterhead!");
