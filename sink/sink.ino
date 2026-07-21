@@ -102,7 +102,7 @@ bool clusterHeadMACKnown(uint8_t* MAC){
 }
 
 // Unfinished - need to complete the second portion of reading out all the collected data.
-void handleAggregatePacket((uint8_t*) CHMAC, aggregateDataPacket_t* aggPkt){
+void handleAggregatePacket(uint8_t* CHMAC, aggregateDataPacket_t* aggPkt){
   uint8_t packetMAC;
   memcpy(&packetMAC,&CHMAC,6);
   if (!clusterHeadMACKnown(&packetMAC)){
@@ -138,7 +138,7 @@ void onDataRecv(const esp_now_recv_info* recvInfo, const uint8_t* incomingData){
   uint8_t packetType = incomingData[0];
 
   if (packetType == AGGREGATE_DATA){
-    handleAggregatePacket(&senderMac, const aggregateDataPacket_t* incomingData);
+    handleAggregatePacket(&senderMac, aggregateDataPacket_t* incomingData);
   }
   return;
 }
