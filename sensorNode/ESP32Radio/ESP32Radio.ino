@@ -3,6 +3,7 @@
 NOTE: Compile this with the ESP32S3 dev module Arduino board.
 */
 
+// if join request already sent, DO NOT send another join request. Assume it's already connected.
 #include <Wire.h>
 #include <SPI.h>
 #include <esp_now.h>

@@ -1,6 +1,10 @@
 /*
 NOTE: This should be compiled with the ESP32S3 Dev Module with CDC on Boot enabled.
+This code will repeat the very last sensor reading sent to it if the sensor is umpluggged and the board is not restarted. it is a test.
 */
+
+// For real clusterhead: trigger is the sink, create a package with 3 sensor readings 
+// Clusterhead tasks: 
 
 #include <WiFi.h>
 #include <esp_now.h>
