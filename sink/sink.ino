@@ -74,8 +74,6 @@ unsigned long currentTime;
 unsigned long sendTime;
 unsigned long roundCount;
 
-esp_now_peer_info_t peerInfo;
-
 // Helpers ----------------------------------------------------------
 
 void sendDiscoveryPacket(){
@@ -91,11 +89,11 @@ void sendDiscoveryPacket(){
 }
 
 bool clusterHeadMACKnown(uint8_t* MAC){
-  uint8_t testMAC;
-  memcpy(&testMAC, MAC, 6);
+  uint8_t testMAC[6];
+  memcpy(testMAC, MAC, 6);
   bool flag = false;
   for (int i = 0; i<clusterHeadCount; i++){
-    if (memcmp(&testMAC, &(clusterHeadMACs[i]),sizeof(clusterHeadMACs[i])) == 0){
+    if (memcmp(testMAC, &(clusterHeadMACs[i]),sizeof(clusterHeadMACs[i])) == 0){
       flag = true;
     }
   }
@@ -104,20 +102,21 @@ bool clusterHeadMACKnown(uint8_t* MAC){
 
 // Unfinished - need to complete the second portion of reading out all the collected data.
 void handleAggregatePacket(const uint8_t* CHMAC, aggregateDataPacket_t* aggPkt){
-  uint8_t packetMAC;
-  memcpy(&packetMAC,&CHMAC,6);
-  if (!clusterHeadMACKnown(&packetMAC)){
-    memcpy(&(clusterHeadMACs[clusterHeadCount++]), CHMAC, 6);
+  uint8_t packetMAC[6];
+  memcpy(packetMAC,CHMAC,6);
+  if (!clusterHeadMACKnown(packetMAC)){
+    memcpy(clusterHeadMACs[clusterHeadCount],CHMAC,6);
+    // memcpy the agg packet into a larger array of all the collected data.
+    memcpy(&aggregatePackets[clusterHeadCount], aggPkt, sizeof(aggregateDataPacket_t));
+    clusterHeadCount++; 
     DEBUG_PORT.println("Added clusterhead into data set");
   }
   // print out the data recieved, copy the packet.
   DEBUG_PORT.println("Recieved Aggregate data packet from clusterhead!");
-  // memcpy the agg packet into a larger array of all the collected data.
-  memcpy(&aggregatePackets[clusterHeadCount], aggPkt, sizeof(aggregateDataPacket_t));
 
   for (int i = 0; i<clusterHeadCount; i++){
     char buff[1000];
-    sprintf(buff, "Data collected for Clusterhead %i:");
+    sprintf(buff, "Data collected for Clusterhead %d: ",i);
     DEBUG_PORT.println(buff);
 
     for (int j = 0; j<aggregatePackets[i].readingsCount;j++){
@@ -135,7 +134,7 @@ void handleAggregatePacket(const uint8_t* CHMAC, aggregateDataPacket_t* aggPkt){
   return;
 }
 
-void onDataRecv(const esp_now_recv_info* recvInfo, const uint8_t* incomingData){
+void onDataRecv(const esp_now_recv_info* recvInfo, const uint8_t* incomingData,int len){
   const uint8_t* senderMac = recvInfo->src_addr;
   uint8_t packetType = incomingData[0];
 
@@ -154,10 +153,13 @@ void setup() {
   WiFi.mode(WIFI_STA);
   esp_now_init();
 
+  esp_now_peer_info_t peerInfo = {};
   memcpy(peerInfo.peer_addr, broadcastAddress, 6);
   peerInfo.channel = 0;
   peerInfo.encrypt = false;
   esp_now_add_peer(&peerInfo);
+
+  esp_now_register_recv_cb(onDataRecv);
 
   DEBUG_PORT.println("ESP32 setup and broadcasting as sink");
   startTime = millis();
@@ -166,13 +168,14 @@ void setup() {
 void loop() {
   currentTime = millis();
   if (currentTime - sendTime >= DATA_GET_INTERVAL){
+    // Future: print out all aggData packets all at once. First, you need to define a timeout.
+    // Once finished, reset all used conditions.
+    clusterHeadCount = 0;
+    memset(&aggregatePackets,0,sizeof(aggregatePackets));
+    memset(&discPkt, 0, sizeof(discPkt));
+    roundCount++;
+    // sentDiscovery = false;
     sendDiscoveryPacket();
+    sentDiscovery = true;
   }
-  // Future: print out all aggData packets all at once. First, you need to define a timeout.
-  // Once finished, reset all used conditions.
-  clusterHeadCount = 0;
-  memset(&aggregatePackets,0,sizeof(aggregatePackets));
-  memset(&discPkt, 0, sizeof(discPkt));
-  roundCount++;
-  sentDiscovery = false;
 }

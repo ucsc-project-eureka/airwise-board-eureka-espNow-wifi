@@ -258,6 +258,7 @@ void OnDataRecv(const esp_now_recv_info* recvInfo, const uint8_t* incomingData, 
 
 void setup(){
   DEBUG_PORT.begin(115200);
+  while(!DEBUG_PORT);
 
   WiFi.disconnect(true);
   WiFi.mode(WIFI_STA);

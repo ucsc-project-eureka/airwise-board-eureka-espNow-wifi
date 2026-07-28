@@ -27,6 +27,8 @@ bool hasJoined = false;
 bool clusterheadMACKnown = false;
 bool scheduleReceived = false;
 bool sentPacket = false;
+bool sentJoinRequest = false;
+int lastRoundCounter = 0;
 
 uint8_t broadcastAddress[] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
 uint8_t sinkMAC[6];
@@ -66,32 +68,39 @@ struct sensorDataPacket_t {
   unsigned long timestamp;
 };
 
-esp_now_peer_info_t peerInfo;
-
 // Helpers -----------------------------------------------------------------
 
 // in case to let other sensors know.
 void sendJoinRequest() {
-  if (hasJoined) return;
+  if (hasJoined||sentJoinRequest) return;
   joinRequestPacket_t joinPacket = { JOIN_REQUEST };
   esp_now_send(clusterheadMAC, (uint8_t *)&joinPacket, sizeof(joinPacket));
   DEBUG_PORT.println("Sent join request!");
+  sentJoinRequest = true;
 }
 
 // in case of received discovery packet.
 void handleDiscoveryPacket(const uint8_t *senderMAC, const discoveryPacket_t *packet){
   DEBUG_PORT.println("Discovery packet received!");
   if (packet->hopCount == 0) return;
+
   if (!clusterheadMACKnown) {
     memcpy(clusterheadMAC, senderMAC, 6);
     clusterheadMACKnown = true;
-
     // Register clusterhead as peer now that we have its MAC
+    esp_now_peer_info_t  peerInfo = {};
     memcpy(peerInfo.peer_addr, clusterheadMAC, 6);
     peerInfo.channel = 0;
     peerInfo.encrypt = false;
     esp_now_add_peer(&peerInfo);
     DEBUG_PORT.println("Added clusterhead as a peer!");
+  }
+  if (packet->roundCounter != lastRoundCounter) {
+    lastRoundCounter = packet->roundCounter;
+    hasJoined = false;
+    sentJoinRequest = false;
+    scheduleReceived = false;
+    sentPacket = false;
   }
   else{DEBUG_PORT.println("Clusterhead was already added.");}
   if (!hasJoined) {
@@ -109,11 +118,13 @@ void handleSchedulePacket(const uint8_t *senderMAC, const tdmaSchedulePacket_t *
     if (memcmp(packet->macs[i], myMAC, 6) == 0) {
       mySlotIndex = i;
       hasJoined = true;
+      scheduleReceived = true;
       scheduledSlotTime = millis() + (mySlotIndex * TDMA_SLOT_TIME);
       return;
     }
   }
   hasJoined = false;
+  scheduleReceived = false;
   mySlotIndex = 255;
 }
 
@@ -152,17 +163,16 @@ void setup(){
 
   // setup the broadcast channel.
   // adding peer so that broadcast is sent
-  esp_now_peer_info_t peerInfo = {};
-  memcpy(peerInfo.peer_addr, broadcastAddress, 6);
-  peerInfo.channel = 0;
-  esp_now_add_peer(&peerInfo);
+  esp_now_peer_info_t broadcastInfo = {};
+  memcpy(broadcastInfo.peer_addr, broadcastAddress, 6);
+  broadcastInfo.channel = 0;
+  esp_now_add_peer(&broadcastInfo);
   DEBUG_PORT.println("Broadcasting address added as wifi esp-now peer");
 
   esp_now_register_recv_cb(OnDataRecv);
 }
 
 void loop() {
-  sentPacket = false;
   if (scheduleReceived && hasJoined && millis() >= scheduledSlotTime){
     // Trigger the coproc to send sensor data to ESP32.
     COPROC_PORT.println("SENSOR_DATA");
