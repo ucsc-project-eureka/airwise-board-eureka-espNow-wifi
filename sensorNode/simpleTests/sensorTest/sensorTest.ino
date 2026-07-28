@@ -7,7 +7,6 @@
 
 // MODS
 #include <Adafruit_seesaw.h>
-Adafruit_seesaw ss;             // Soil sensor.
 #include <Adafruit_INA3221.h>
 #include "Adafruit_BME680.h"
 #include "SparkFun_u-blox_GNSS_Arduino_Library.h" // for M10S GPS interfacing.
@@ -40,7 +39,7 @@ uint8_t sectorBuf[512];
 #define DEBUG_PORT SerialUSB
 
 SFE_UBLOX_GNSS myGNSS;
-#define SOIL_I2C 0x36
+#define SOIL_I2C 0x42
 
 #define BME_SCK 13
 #define BME_MISO 12
@@ -54,6 +53,7 @@ SFE_UBLOX_GNSS myGNSS;
 #define wirePort Wire               // I2C Bus port name.
 Adafruit_BME680 bme(&wirePort);     // I2C
 Adafruit_INA3221 ina3221;
+Adafruit_seesaw ss;
 
 // Pins/custom serial port for the ESP32 - Credit, Airwise team
 // Create a new Serial instance for SERCOM0 -------------------------------------
@@ -136,22 +136,16 @@ void checkBme680(void){
 }
 
 void checkIna3221(void){
-  if(!ina3221.begin()){
-    DEBUG_PORT.println("Could not find ina chip, check wiring!");
-    while (1) delay(10); // Wait 10 milliseconds to account for fluctuations
-  }
-  else{
     // 1. Set PA17 to LOW immediately via direct register access
     // Ensure the pin is an output
     PORT->Group[0].DIRSET.reg = PORT_PA17; 
     // Clear the pin (Set to LOW)
-    PORT->Group[0].OUTCLR.reg = PORT_PA17;
+    PORT->Group[0].OUTSET.reg = PORT_PA17;
 
     DEBUG_PORT.begin(115200);
 
     DEBUG_PORT.println("INA3221 port found and initialized!");
     serialPrintINAData();
-  }
 }
 
 // Checking GPS sensor activation and communication
@@ -246,7 +240,10 @@ void scanI2CWire(void){
 uint32_t lastSendData = 0;
 uint32_t currentTime = millis();
 void setup(){
-  
+  Wire.begin();
+  ina3221.begin(0x40,&Wire);
+  bme.begin(0x77,&Wire);
+  ss.begin(SOIL_I2C);
   DEBUG_PORT.begin(115200);
   while(!DEBUG_PORT);
   DEBUG_PORT.println("Debug serial initialized!");
@@ -255,9 +252,11 @@ void setup(){
   DEBUG_PORT.print(SEND_PERIOD);
   DEBUG_PORT.println(" ms.");
 
+  // Device at 0x40, 0x42, 0x77
   // Check initialization of every sensor relevant to EUREKA project.
   checkBme680();
   checkIna3221();
+
   checkM10S();
   checkSoilSensor(); // Note: I2C address not specified for soil sensor yet, this will be errored.
 }
@@ -269,11 +268,11 @@ void loop(){
     // update the time stamp.
     lastSendData = currentTime;
     
-    // get sensor readings.
+    // // get sensor readings.
     bme.performReading();
 
 
-    // print check.
+    // // print check.
     DEBUG_PORT.println("Temperature = ");
     DEBUG_PORT.print(bme.temperature);
     DEBUG_PORT.println(" *C");
@@ -282,8 +281,11 @@ void loop(){
     DEBUG_PORT.print(bme.humidity);
     DEBUG_PORT.println(" %");
 
-    // note: during some tests soil sensors were not connected. dummy value holds.
-    uint32_t moisture = 500;
+    // note: during some tests soil sensors were not connected. 
+
+    // Capacitive reading is the one for overall soil moisture.
+    // dummy value holds.
+    uint16_t moisture = ss.touchRead(0);
 
     DEBUG_PORT.print("Soil Moisture = ");
     DEBUG_PORT.println(moisture);

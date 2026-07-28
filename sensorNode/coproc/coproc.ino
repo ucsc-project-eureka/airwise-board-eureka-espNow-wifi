@@ -69,10 +69,16 @@ bool getDataFlag = false;
 void setup(){
   // turn on the radio from the coproc
   PORT->Group[0].DIRSET.reg = PORT_PA17;
-  PORT->Group[0].OUTCLR.reg = PORT_PA17;
+  PORT->Group[0].OUTSET.reg = PORT_PA17;
   // Get UART connecting coproc and esp32 online.
   ESP_PORT.begin(ESP_BAUD); // UART, coproc->esp32 and vice versa.
   while(!ESP_PORT);
+
+  // initialize the sensors.
+  Wire.begin();
+  bme.begin();
+  ss.begin(SOIL_I2C);
+  
   startTime = millis();
   return;
 }
@@ -95,15 +101,13 @@ void loop(){
     ESP_PORT.println("SENSOR_DATA:");
 
     // get latest bme data.
-    bme.begin();
     bme.performReading();
     myData.temperature = bme.temperature;
     myData.humidity = bme.humidity;
     
-    ss.begin(SOIL_I2C);
-    // myData.soilMoisture = ss.touchRead(0); // Soil monitor not connected during testing, but if not hardcoded use this.
+    myData.soilMoisture = ss.touchRead(0); // Soil monitor not connected during testing, but if not hardcoded use this.
     // Soil moisture dummy value:
-    myData.soilMoisture = 500;
+    // myData.soilMoisture = 500;
 
     myData.timestamp = currentTime;
     ESP_PORT.println(myData.temperature);
